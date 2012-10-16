@@ -1,4 +1,0 @@
-InvertedSoftware-DataBlock
-==========================
-
-InvertedSoftware DataBlock

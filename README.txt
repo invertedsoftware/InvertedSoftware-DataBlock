@@ -1,0 +1,1 @@
+http://galratner.com/blogs/net/archive/2012/06/08/introducing-the-inverted-software-data-block-simple-ado-net-to-objects-with-no-boilerplate-code.aspx
