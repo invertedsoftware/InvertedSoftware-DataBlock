@@ -4,9 +4,6 @@
 //
 
 using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
 
 namespace InvertedSoftware.DataBlock
 {
@@ -22,7 +19,7 @@ namespace InvertedSoftware.DataBlock
     }
 
     /// <summary>
-    /// An Attribute to be used when composing sql parameters from objects.
+    /// Indicates the CRUD operation this object property is to be used for.
     /// </summary>
     public class CrudField : Attribute
     {

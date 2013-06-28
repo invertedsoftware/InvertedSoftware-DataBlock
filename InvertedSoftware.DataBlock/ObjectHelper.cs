@@ -1,17 +1,14 @@
-﻿﻿// THIS CODE AND INFORMATION IS PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND, EITHER EXPRESSED OR IMPLIED.
+﻿// THIS CODE AND INFORMATION IS PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND, EITHER EXPRESSED OR IMPLIED.
 //
 // Copyright (C) Inverted Software(TM). All rights reserved.
 //
 
 using System;
-using System.Linq;
-using System.Collections.Generic;
-using System.Data;
-using System.Data.SqlClient;
-using System.Reflection;
-using System.Threading;
-using System.ComponentModel;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Data.SqlClient;
+using System.Linq;
+using System.Reflection;
 using System.Reflection.Emit;
 
 namespace InvertedSoftware.DataBlock
@@ -36,7 +33,7 @@ namespace InvertedSoftware.DataBlock
         /// local cache for metadata.
         /// </summary>
         private static ConcurrentDictionary<string, DataObjectInfo> ObjectInfoCache = new ConcurrentDictionary<string, DataObjectInfo>();
-        
+
         /// <summary>
         /// Local cache for field names in queries.
         /// </summary>
@@ -45,8 +42,8 @@ namespace InvertedSoftware.DataBlock
         /// <summary>
         /// Gets object metadata information.
         /// </summary>
-        /// <typeparam name="T"></typeparam>
-        /// <returns></returns>
+        /// <typeparam name="T">The object's type.</typeparam>
+        /// <returns>DataObjectInfo for the specific type.</returns>
         public static DataObjectInfo GetDataObjectInfo<T>()
         {
             string name = typeof(T).FullName;
@@ -109,11 +106,11 @@ namespace InvertedSoftware.DataBlock
         }
 
         /// <summary>
-        /// Gets a list of columns for a query (Please make sure columns returned are always the same per sproc).
+        /// Gets a list of columns for a query (Please make sure columns returned match the output of the stored procedure).
         /// </summary>
-        /// <param name="reader">Reader to be used to populate the local cache.</param>
-        /// <param name="sprocName">Query name to be used as cache key.</param>
-        /// <returns></returns>
+        /// <param name="reader">A data reader containing the stored procedure's result.</param>
+        /// <param name="sprocName">The name of the stored procedure to use.</param>
+        /// <returns>A list of column names.</returns>
         public static List<string> GetColumnNames(SqlDataReader reader, string sprocName)
         {
             return QueryColumnNamesCache.GetOrAdd(sprocName, (key) =>
@@ -129,12 +126,12 @@ namespace InvertedSoftware.DataBlock
         /// <summary>
         /// Load the current row in a DataReader into an object.
         /// </summary>
-        /// <typeparam name="T"></typeparam>
-        /// <param name="reader"></param>
-        /// <param name="objectToLoad"></param>
-        /// <param name="props"></param>
-        /// <param name="columnList"></param>
-        /// <param name="sprocName"></param>
+        /// <typeparam name="T">The object's type.</typeparam>
+        /// <param name="reader">A SqlDataReader containing the result and pointing to the next row.</param>
+        /// <param name="objectToLoad">The live empty object.</param>
+        /// <param name="props">Properties to use when loading the object.</param>
+        /// <param name="columnList">The list of columns in the data reader / object.</param>
+        /// <param name="sprocName">The name of the stored procedure to use.</param>
         public static void LoadAs<T>(SqlDataReader reader, T objectToLoad, PropertyInfo[] props, List<string> columnList, string sprocName)
         {
             DataObjectInfo dataObjectInfo = GetDataObjectInfo<T>();
@@ -154,12 +151,12 @@ namespace InvertedSoftware.DataBlock
         }
 
         /// <summary>
-        /// Gets a n array of SqlParameter based on a data object.
+        /// Gets an array of SqlParameter based on a data object.
         /// </summary>
-        /// <typeparam name="T"></typeparam>
-        /// <param name="dataObject"></param>
-        /// <param name="usedFor"></param>
-        /// <returns></returns>
+        /// <typeparam name="T">The object's type.</typeparam>
+        /// <param name="dataObject">The live object.</param>
+        /// <param name="usedFor">The CRUD operation to be performed with the SqlParameter array.</param>
+        /// <returns>SqlParameter array for the object.</returns>
         public static SqlParameter[] GetSQLParametersFromPublicProperties<T>(object dataObject, CrudFieldType usedFor)
         {
             Type type = typeof(T);
@@ -175,7 +172,7 @@ namespace InvertedSoftware.DataBlock
                     usedForAttr == null)
                 {
                     object parameterValue = dataObjectInfo.GetMethods[prop.Name](dataObject);
-                    if(parameterValue == null)
+                    if (parameterValue == null)
                         parameterValue = DBNull.Value;
 
                     SqlParameter sqlParameter = new SqlParameter(String.Format("@{0}", prop.Name), parameterValue);
@@ -186,5 +183,3 @@ namespace InvertedSoftware.DataBlock
         }
     }
 }
-
-

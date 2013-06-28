@@ -1,13 +1,10 @@
-﻿﻿// THIS CODE AND INFORMATION IS PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND, EITHER EXPRESSED OR IMPLIED.
+﻿// THIS CODE AND INFORMATION IS PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND, EITHER EXPRESSED OR IMPLIED.
 //
 // Copyright (C) Inverted Software(TM). All rights reserved.
 //
 
-using System;
-using System.Configuration;
 using System.Data;
 using System.Data.SqlClient;
-using System.Collections;
 
 namespace InvertedSoftware.DataBlock
 {
@@ -184,5 +181,3 @@ namespace InvertedSoftware.DataBlock
         }
     }
 }
-
-
