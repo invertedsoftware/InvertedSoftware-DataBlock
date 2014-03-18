@@ -9,6 +9,7 @@ using System.Data;
 using System.Data.SqlClient;
 using System.Linq;
 using System.Reflection;
+using System.ComponentModel.DataAnnotations.Schema;
 
 namespace InvertedSoftware.DataBlock
 {
@@ -100,7 +101,7 @@ namespace InvertedSoftware.DataBlock
             if (commandParameters != null)
                 paramArray = paramArray.Concat(commandParameters).ToArray();
 
-            SqlCommand cmd = new SqlCommand();
+            SqlCommand cmd = SqlHelper.CommandPool.GetObject();
             using (SqlConnection conn = new SqlConnection(stringConnection))
             {
                 try
@@ -124,6 +125,10 @@ namespace InvertedSoftware.DataBlock
                 catch (Exception e)
                 {
                     throw new DataBlockException(String.Format("Error Getting object list {0}. Stored Procedure: {1}", typeof(T).FullName, sprocName), e);
+                }
+                finally
+                {
+                    SqlHelper.CommandPool.PutObject(cmd);
                 }
             }
 
@@ -155,6 +160,306 @@ namespace InvertedSoftware.DataBlock
                         ObjectHelper.LoadAs<T>(reader, newobject, props, columnList, sprocName);
                         objectList.Add(newobject);
                     }
+                }
+            }
+            catch (Exception e)
+            {
+                throw new DataBlockException(String.Format("Error Getting object list {0}. Stored Procedure: {1}", typeof(T).FullName, sprocName), e);
+            }
+
+            return objectList;
+        }
+
+        /// <summary>
+        /// Get a list of strings.
+        /// </summary>
+        /// <param name="sprocName">The name of the stored procedure to use.</param>
+        /// <param name="columnName">The name of the column containing the result. Leave empty if this is the first column in the result.</param>
+        /// <param name="stringConnection">The string connection.</param>
+        /// <returns>List of string</returns>
+        public static List<string> GetStringList(string sprocName, string columnName, string stringConnection)
+        {
+            List<string> stringList = new List<string>();
+
+            try
+            {
+                using (SqlDataReader reader = SqlHelper.ExecuteReader(stringConnection, CommandType.StoredProcedure, sprocName))
+                {
+                    if (string.IsNullOrWhiteSpace(columnName))
+                        while (reader.Read())
+                            stringList.Add(reader.GetString(0));
+                    else
+                        while (reader.Read())
+                            stringList.Add(reader.GetString(reader.GetOrdinal(columnName)));
+                }
+            }
+            catch (Exception e)
+            {
+                throw new DataBlockException(String.Format("Error Getting string list. Stored Procedure: {0}", sprocName), e);
+            }
+
+            return stringList;
+        }
+
+        /// <summary>
+        /// Get a list of integers.
+        /// </summary>
+        /// <param name="sprocName">The name of the stored procedure to use.</param>
+        /// <param name="columnName">The name of the column containing the result. Leave empty if this is the first column in the result.</param>
+        /// <param name="stringConnection">The string connection.</param>
+        /// <returns>List of int</returns>
+        public static List<int> GetIntList(string sprocName, string columnName, string stringConnection)
+        {
+            List<int> intList = new List<int>();
+
+            try
+            {
+                using (SqlDataReader reader = SqlHelper.ExecuteReader(stringConnection, CommandType.StoredProcedure, sprocName))
+                {
+                    if (string.IsNullOrWhiteSpace(columnName))
+                        while (reader.Read())
+                            intList.Add(reader.GetInt32(0));
+                    else
+                        while (reader.Read())
+                            intList.Add(reader.GetInt32(reader.GetOrdinal(columnName)));
+                }
+            }
+            catch (Exception e)
+            {
+                throw new DataBlockException(String.Format("Error Getting int list. Stored Procedure: {0}", sprocName), e);
+            }
+
+            return intList;
+        }
+
+        /// <summary>
+        /// Get a list of decimals.
+        /// </summary>
+        /// <param name="sprocName">The name of the stored procedure to use.</param>
+        /// <param name="columnName">The name of the column containing the result. Leave empty if this is the first column in the result.</param>
+        /// <param name="stringConnection">The string connection.</param>
+        /// <returns>List of decimal</returns>
+        public static List<decimal> GetDecimalList(string sprocName, string columnName, string stringConnection)
+        {
+            List<decimal> decimalList = new List<decimal>();
+
+            try
+            {
+                using (SqlDataReader reader = SqlHelper.ExecuteReader(stringConnection, CommandType.StoredProcedure, sprocName))
+                {
+                    if (string.IsNullOrWhiteSpace(columnName))
+                        while (reader.Read())
+                            decimalList.Add(reader.GetDecimal(0));
+                    else
+                        while (reader.Read())
+                            decimalList.Add(reader.GetDecimal(reader.GetOrdinal(columnName)));
+                }
+            }
+            catch (Exception e)
+            {
+                throw new DataBlockException(String.Format("Error Getting decimal list. Stored Procedure: {0}", sprocName), e);
+            }
+
+            return decimalList;
+        }
+
+        /// <summary>
+        /// Get a list of objects with eager loaded child objects from the next result set in the same query. Parent objects are in the first result.
+        /// </summary>
+        /// <typeparam name="T1">The parent type.</typeparam>
+        /// <typeparam name="T2">The child type.</typeparam>
+        /// <param name="parentGenerator">Function to generate a new parent object. Example: () => new MyCustomObject()</param>
+        /// <param name="childGenerator">Function to generate a new child. Example: () => new MyCustomObject()</param>
+        /// <param name="sprocName">The name of the stored procedure to use.</param>
+        /// <param name="stringConnection">The string connection.</param>
+        /// <param name="commandParameters">Any parameters required by the stored procedure.</param>
+        /// <returns>A list of objects with children.</returns>
+        public static List<T1> GetEagerLoadedObjectListFromMultipleResults<T1, T2>(Func<T1> parentGenerator, Func<T2> childGenerator, string sprocName, string stringConnection, params SqlParameter[] commandParameters)
+        {
+            return GetEagerLoadedObjectListFromMultipleResults<T1, T2, T2, T2>(parentGenerator, childGenerator, null, null, sprocName, stringConnection, commandParameters);
+        }
+
+        /// <summary>
+        /// Get a list of objects with eager loaded child objects from the next result set in the same query. Parent objects are in the first result.
+        /// </summary>
+        /// <typeparam name="T1">The parent type.</typeparam>
+        /// <typeparam name="T2">The first child type.</typeparam>
+        /// <typeparam name="T3">The second child type.</typeparam>
+        /// <param name="parentGenerator">Function to generate a new parent object. Example: () => new MyCustomObject()</param>
+        /// <param name="childGenerator">Function to generate a new child object. Example: () => new MyCustomObject()</param>
+        /// <param name="secondChildGenerator">Function to generate a new second child object. Example: () => new MyCustomObject()</param>
+        /// <param name="sprocName">The string connection.</param>
+        /// <param name="stringConnection">The string connection.</param>
+        /// <param name="commandParameters">Any parameters required by the stored procedure.</param>
+        /// <returns>A list of objects with children.</returns>
+        public static List<T1> GetEagerLoadedObjectListFromMultipleResults<T1, T2, T3>(Func<T1> parentGenerator, Func<T2> childGenerator, Func<T3> secondChildGenerator, string sprocName, string stringConnection, params SqlParameter[] commandParameters)
+        {
+            return GetEagerLoadedObjectListFromMultipleResults<T1, T2, T3, T3>(parentGenerator, childGenerator, secondChildGenerator, null, sprocName, stringConnection, commandParameters);
+        }
+
+        /// <summary>
+        /// Get a list of objects with eager loaded child objects from the next result set in the same query. Parent objects are in the first result.
+        /// </summary>
+        /// <typeparam name="T1">The parent type.</typeparam>
+        /// <typeparam name="T2">The first child type.</typeparam>
+        /// <typeparam name="T3">The second child type.</typeparam>
+        /// <typeparam name="T4">The third child type</typeparam>
+        /// <param name="parentGenerator">Function to generate a new parent object. Example: () => new MyCustomObject()</param>
+        /// <param name="childGenerator">Function to generate a new child object. Example: () => new MyCustomObject()</param>
+        /// <param name="secondChildGenerator">Function to generate a new second child object. Example: () => new MyCustomObject()</param>
+        /// <param name="thirdChildGenerator">Function to generate a new third child object. Example: () => new MyCustomObject()</param>
+        /// <param name="sprocName">The name of the stored procedure to use.</param>
+        /// <param name="stringConnection">The string connection.</param>
+        /// <param name="commandParameters">Any parameters required by the stored procedure.</param>
+        /// <returns>A list of objects with children.</returns>
+        public static List<T1> GetEagerLoadedObjectListFromMultipleResults<T1, T2, T3, T4>(Func<T1> parentGenerator, Func<T2> childGenerator, Func<T3> secondChildGenerator, Func<T4> thirdChildGenerator, string sprocName, string stringConnection, params SqlParameter[] commandParameters)
+        {
+            List<T1> objectList1 = null;
+            List<T2> objectList2 = null;
+            List<T3> objectList3 = null;
+            List<T4> objectList4 = null;
+            try
+            {
+                using (SqlDataReader reader = SqlHelper.ExecuteReader(stringConnection, CommandType.StoredProcedure, sprocName, commandParameters))
+                {
+                    objectList1 = GetObjectListFromReader<T1>(parentGenerator, sprocName, reader);
+                    reader.NextResult();
+                    objectList2 = GetObjectListFromReader<T2>(childGenerator, sprocName, reader);
+
+                    if (objectList1 != null && objectList2 != null) // Map the objects
+                        ObjectHelper.MapRelatedObjects(objectList1, objectList2);
+                    if (secondChildGenerator != null && objectList1 != null)
+                    {
+                        reader.NextResult();
+                        objectList3 = GetObjectListFromReader<T3>(secondChildGenerator, sprocName, reader);
+                        ObjectHelper.MapRelatedObjects(objectList1, objectList3);
+                    }
+
+                    if (thirdChildGenerator != null)
+                    {
+                        reader.NextResult();
+                        objectList4 = GetObjectListFromReader<T4>(thirdChildGenerator, sprocName, reader);
+                        ObjectHelper.MapRelatedObjects(objectList1, objectList4);
+                    }
+                }
+            }
+            catch (Exception e)
+            {
+                throw new DataBlockException(String.Format("Error Getting object list {0}. Stored Procedure: {1}", typeof(T1).FullName, sprocName), e);
+            }
+            return objectList1;
+        }
+
+        /// <summary>
+        /// Get a list of objects with eager loaded child objects from a flat inner join query. The query output colums follow the the pattern: ObjectTypeName_PropertyName.
+        /// For Example: Category_CategoryID, Category_CategoryName, Product_CategoryID, Product_ProductID, Product_ProductName.
+        /// </summary>
+        /// <typeparam name="T1">The parent type.</typeparam>
+        /// <typeparam name="T2">The child type.</typeparam>
+        /// <param name="parentGenerator">Function to generate a new parent object. Example: () => new MyCustomObject()</param>
+        /// <param name="childGenerator">Function to generate a new child object. Example: () => new MyCustomObject()</param>
+        /// <param name="sprocName">The name of the stored procedure to use.</param>
+        /// <param name="stringConnection">The string connection.</param>
+        /// <param name="commandParameters">Any parameters required by the stored procedure.</param>
+        /// <returns>A list of objects with children.</returns>
+        public static List<T1> GetEagerLoadedObjectListFromInnerJoinQuery<T1, T2>(Func<T1> parentGenerator, Func<T2> childGenerator, string sprocName, string stringConnection, params SqlParameter[] commandParameters)
+        {
+           return  GetEagerLoadedObjectListFromInnerJoinQuery<T1, T2, T2, T2>(parentGenerator, childGenerator, null, null, sprocName, stringConnection, commandParameters);
+        }
+
+        /// <summary>
+        /// Get a list of objects with eager loaded child objects from a flat inner join query. The query output colums follow the the pattern: ObjectTypeName_PropertyName.
+        /// For Example: Category_CategoryID, Category_CategoryName, Product_CategoryID, Product_ProductID, Product_ProductName.
+        /// </summary>
+        /// <typeparam name="T1">The parent type.</typeparam>
+        /// <typeparam name="T2">The child type.</typeparam>
+        /// <typeparam name="T3">The second child type.</typeparam>
+        /// <param name="parentGenerator">Function to generate a new parent object. Example: () => new MyCustomObject()</param>
+        /// <param name="childGenerator">Function to generate a new child object. Example: () => new MyCustomObject()</param>
+        /// <param name="secondChildGenerator">Function to generate a new second child object. Example: () => new MyCustomObject()</param>
+        /// <param name="sprocName">The name of the stored procedure to use.</param>
+        /// <param name="stringConnection">The string connection.</param>
+        /// <param name="commandParameters">Any parameters required by the stored procedure.</param>
+        /// <returns>A list of objects with children.</returns>
+        public static List<T1> GetEagerLoadedObjectListFromInnerJoinQuery<T1, T2, T3>(Func<T1> parentGenerator, Func<T2> childGenerator, Func<T3> secondChildGenerator, string sprocName, string stringConnection, params SqlParameter[] commandParameters)
+        {
+           return  GetEagerLoadedObjectListFromInnerJoinQuery<T1, T2, T3, T3>(parentGenerator, childGenerator, secondChildGenerator, null, sprocName, stringConnection, commandParameters);
+        }
+
+        /// <summary>
+        /// Get a list of objects with eager loaded child objects from a flat inner join query. The query output colums follow the the pattern: ObjectTypeName_PropertyName.
+        /// For Example: Category_CategoryID, Category_CategoryName, Product_CategoryID, Product_ProductID, Product_ProductName.
+        /// </summary>
+        /// <typeparam name="T1">The parent type.</typeparam>
+        /// <typeparam name="T2">The child type.</typeparam>
+        /// <typeparam name="T3">The second child type.</typeparam>
+        /// <typeparam name="T4">The third child type.</typeparam>
+        /// <param name="parentGenerator">Function to generate a new parent object. Example: () => new MyCustomObject()</param>
+        /// <param name="childGenerator">Function to generate a new child object. Example: () => new MyCustomObject()</param>
+        /// <param name="secondChildGenerator">Function to generate a new second child object. Example: () => new MyCustomObject()</param>
+        /// <param name="thirdChildGenerator">Function to generate a new third child object. Example: () => new MyCustomObject()</param>
+        /// <param name="sprocName">The name of the stored procedure to use.</param>
+        /// <param name="stringConnection">The string connection.</param>
+        /// <param name="commandParameters">Any parameters required by the stored procedure.</param>
+        /// <returns>A list of objects with children.</returns>
+        public static List<T1> GetEagerLoadedObjectListFromInnerJoinQuery<T1, T2, T3, T4>(Func<T1> parentGenerator, Func<T2> childGenerator, Func<T3> secondChildGenerator, Func<T4> thirdChildGenerator, string sprocName, string stringConnection, params SqlParameter[] commandParameters)
+        {
+            List<T1> objectList1 = new List<T1>();
+            List<T2> objectList2 = new List<T2>();
+            List<T3> objectList3 = new List<T3>();
+            List<T4> objectList4 = new List<T4>();
+            try
+            {
+                using (SqlDataReader reader = SqlHelper.ExecuteReader(stringConnection, CommandType.StoredProcedure, sprocName, commandParameters))
+                {
+                    List<string> allColumns = ObjectHelper.GetColumnNames(reader, sprocName);
+
+                    while (reader.Read())
+                    {
+                        ObjectHelper.LoadObjectFromReaderWithColumnPrefix<T1>(parentGenerator, ref objectList1, allColumns, reader);
+                        ObjectHelper.LoadObjectFromReaderWithColumnPrefix<T2>(childGenerator, ref objectList2, allColumns, reader);
+                        if (secondChildGenerator != null)
+                            ObjectHelper.LoadObjectFromReaderWithColumnPrefix<T3>(secondChildGenerator, ref objectList3, allColumns, reader);
+                        if (thirdChildGenerator != null)
+                            ObjectHelper.LoadObjectFromReaderWithColumnPrefix<T4>(thirdChildGenerator, ref objectList4, allColumns, reader);
+                    }
+                }
+
+                ObjectHelper.MapRelatedObjects(objectList1, objectList2);
+                if (secondChildGenerator != null)
+                    ObjectHelper.MapRelatedObjects(objectList1, objectList3);
+                if (thirdChildGenerator != null)
+                    ObjectHelper.MapRelatedObjects(objectList1, objectList4);
+            }
+            catch (Exception e)
+            {
+                throw new DataBlockException(String.Format("Error Getting object list {0}. Stored Procedure: {1}", typeof(T1).FullName, sprocName), e);
+            }
+            return objectList1;
+        }
+
+        /// <summary>
+        /// Gets a list of objects with their properties populated from an open SqlDataReader
+        /// </summary>
+        /// <typeparam name="T">he object's type.</typeparam>
+        /// <param name="generator">Function to generate a new object. Example: () => new MyCustomObject()</param>
+        /// <param name="sprocName">The name of the stored procedure to use.</param>
+        /// <param name="reader">An open SqlDataReader</param>
+        /// <returns>A list of objects.</returns>
+        private static List<T> GetObjectListFromReader<T>(Func<T> generator, string sprocName, SqlDataReader reader)
+        {
+            List<T> objectList = new List<T>();
+
+            try
+            {
+                PropertyInfo[] props = ObjectHelper.GetDataObjectInfo<T>().Properties;
+                List<string> columnList = ObjectHelper.GetColumnNames(reader, String.Format("sprocName{0}", typeof(T).Name));
+                T newobject;
+                while (reader.Read())
+                {
+                    newobject = generator();
+                    ObjectHelper.LoadAs<T>(reader, newobject, props, columnList, sprocName);
+                    objectList.Add(newobject);
                 }
             }
             catch (Exception e)

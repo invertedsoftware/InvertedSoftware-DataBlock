@@ -13,25 +13,24 @@ namespace InvertedSoftware.DataBlock
     /// </summary>
     public static class SqlHelper
     {
-        public static ObjectPool<SqlCommand> commandPool = new ObjectPool<SqlCommand>(() => new SqlCommand());
+        public static ObjectPool<SqlCommand> CommandPool = new ObjectPool<SqlCommand>(() => new SqlCommand());
 
         /// <summary>
-        /// Execute a SqlCommand (that returns no resultset) against the database specified in the connection string 
-        /// using the provided parameters.
+        /// Executes a Transact-SQL statement against the connection and returns the number of rows affected.
         /// </summary>
         /// <remarks>
         /// e.g.:  
         ///  int result = ExecuteNonQuery(connString, CommandType.StoredProcedure, "PublishOrders", new SqlParameter("@prodid", 24));
         /// </remarks>
         /// <param name="connectionString">a valid connection string for a SqlConnection</param>
-        /// <param name="commandType">the CommandType (stored procedure, text, etc.)</param>
-        /// <param name="commandText">the stored procedure name or T-SQL command</param>
-        /// <param name="commandParameters">an array of SqlParamters used to execute the command</param>
-        /// <returns>an int representing the number of rows affected by the command</returns>
+        /// <param name="commandType">The CommandType (stored procedure, text, etc.)</param>
+        /// <param name="commandText">The stored procedure name or T-SQL command.</param>
+        /// <param name="commandParameters">An array of SqlParamters used to execute the command.</param>
+        /// <returns>An int representing the number of rows affected by the command.</returns>
         public static int ExecuteNonQuery(string connectionString, CommandType cmdType, string cmdText, params SqlParameter[] commandParameters)
         {
             int val;
-            SqlCommand cmd = commandPool.GetObject();
+            SqlCommand cmd = CommandPool.GetObject();
             try
             {
                 using (SqlConnection conn = new SqlConnection(connectionString))
@@ -42,7 +41,34 @@ namespace InvertedSoftware.DataBlock
             }
             finally
             {
-                commandPool.PutObject(cmd);
+                CommandPool.PutObject(cmd);
+            }
+
+            return val;
+        }
+
+        /// <summary>
+        /// Executes a Transact-SQL statement against the connection and returns the number of rows affected.
+        /// </summary>
+        /// <param name="conn">The connection to use.</param>
+        /// <param name="tran">The SqlTransaction to use.</param>
+        /// <param name="cmdType">The CommandType (stored procedure, text, etc.)</param>
+        /// <param name="cmdText">The stored procedure name or T-SQL command</param>
+        /// <param name="commandParameters">An array of SqlParamters used to execute the command.</param>
+        /// <returns>An int representing the number of rows affected by the command.</returns>
+        public static int ExecuteNonQuery(SqlConnection conn, SqlTransaction tran, CommandType cmdType, string cmdText, params SqlParameter[] commandParameters)
+        {
+            int val;
+            SqlCommand cmd = CommandPool.GetObject();
+            try
+            {
+                PrepareCommand(cmd, conn, tran, cmdType, cmdText, commandParameters);
+                val = cmd.ExecuteNonQuery();
+            }
+            finally
+            {
+                cmd.Transaction = null;
+                CommandPool.PutObject(cmd);
             }
 
             return val;
@@ -60,10 +86,10 @@ namespace InvertedSoftware.DataBlock
         /// <param name="commandType">the CommandType (stored procedure, text, etc.)</param>
         /// <param name="commandText">the stored procedure name or T-SQL command</param>
         /// <param name="commandParameters">an array of SqlParamters used to execute the command</param>
-        /// <returns>A SqlDataReader containing the results</returns>
+        /// <returns>A SqlDataReader containing the results.</returns>
         public static SqlDataReader ExecuteReader(string connectionString, CommandType cmdType, string cmdText, params SqlParameter[] commandParameters)
         {
-            SqlCommand cmd = commandPool.GetObject();
+            SqlCommand cmd = CommandPool.GetObject();
             SqlConnection conn = new SqlConnection(connectionString);
 
             // we use a try/catch here because if the method throws an exception we want to 
@@ -83,7 +109,32 @@ namespace InvertedSoftware.DataBlock
             }
             finally
             {
-                commandPool.PutObject(cmd);
+                CommandPool.PutObject(cmd);
+            }
+        }
+
+        /// <summary>
+        /// Sends the CommandText to the Connection and builds a SqlDataReader withing the current transaction using the provided parameters.
+        /// </summary>
+        /// <param name="conn">The connection to use.</param>
+        /// <param name="tran">The SqlTransaction to use.</param>
+        /// <param name="cmdType">The CommandType (stored procedure, text, etc.)</param>
+        /// <param name="cmdText">The stored procedure name or T-SQL command</param>
+        /// <param name="commandParameters">>An array of SqlParamters used to execute the command.</param>
+        /// <returns>A SqlDataReader containing the results.</returns>
+        public static SqlDataReader ExecuteReader(SqlConnection conn, SqlTransaction tran, CommandType cmdType, string cmdText, params SqlParameter[] commandParameters)
+        {
+            SqlCommand cmd = CommandPool.GetObject();
+            try
+            {
+                PrepareCommand(cmd, conn, tran, cmdType, cmdText, commandParameters);
+                SqlDataReader rdr = cmd.ExecuteReader(CommandBehavior.CloseConnection);
+                return rdr;
+            }
+            finally
+            {
+                cmd.Transaction = null;
+                CommandPool.PutObject(cmd);
             }
         }
 
@@ -95,15 +146,15 @@ namespace InvertedSoftware.DataBlock
         /// e.g.:  
         ///  Object obj = ExecuteScalar(connString, CommandType.StoredProcedure, "PublishOrders", new SqlParameter("@prodid", 24));
         /// </remarks>
-        /// <param name="connectionString">a valid connection string for a SqlConnection</param>
-        /// <param name="commandType">the CommandType (stored procedure, text, etc.)</param>
-        /// <param name="commandText">the stored procedure name or T-SQL command</param>
-        /// <param name="commandParameters">an array of SqlParamters used to execute the command</param>
-        /// <returns>An object that should be converted to the expected type using Convert.To{Type}</returns>
+        /// <param name="connectionString">A valid connection string for a SqlConnection</param>
+        /// <param name="commandType">The CommandType (stored procedure, text, etc.)</param>
+        /// <param name="commandText">The stored procedure name or T-SQL command</param>
+        /// <param name="commandParameters">An array of SqlParamters used to execute the command.</param>
+        /// <returns>The first column of the first row in the result set, or a null reference if the result set is empty. Returns a maximum of 2033 characters. This object should be converted to the expected type using Convert.To{Type}.</returns>
         public static object ExecuteScalar(string connectionString, CommandType cmdType, string cmdText, params SqlParameter[] commandParameters)
         {
             object val;
-            SqlCommand cmd = commandPool.GetObject();
+            SqlCommand cmd = CommandPool.GetObject();
             try
             {
                 using (SqlConnection connection = new SqlConnection(connectionString))
@@ -114,38 +165,37 @@ namespace InvertedSoftware.DataBlock
             }
             finally
             {
-                commandPool.PutObject(cmd);
+                CommandPool.PutObject(cmd);
             }
 
             return val;
         }
 
         /// <summary>
-        /// Execute a SqlCommand that returns the first column of the first record against an existing database connection 
+        /// Execute a SqlCommand that returns the first column of the first record against the database specified in the connection string 
         /// using the provided parameters.
         /// </summary>
-        /// <remarks>
-        /// e.g.:  
-        ///  Object obj = ExecuteScalar(connString, CommandType.StoredProcedure, "PublishOrders", new SqlParameter("@prodid", 24));
-        /// </remarks>
-        /// <param name="conn">an existing database connection</param>
-        /// <param name="commandType">the CommandType (stored procedure, text, etc.)</param>
-        /// <param name="commandText">the stored procedure name or T-SQL command</param>
-        /// <param name="commandParameters">an array of SqlParamters used to execute the command</param>
-        /// <returns>An object that should be converted to the expected type using Convert.To{Type}</returns>
-        public static object ExecuteScalar(SqlConnection connection, CommandType cmdType, string cmdText, params SqlParameter[] commandParameters)
+        /// <param name="conn">The connection to use.</param>
+        /// <param name="tran">The SqlTransaction to use.</param>
+        /// <param name="cmdType">The CommandType (stored procedure, text, etc.)</param>
+        /// <param name="cmdText">The stored procedure name or T-SQL command</param>
+        /// <param name="commandParameters">An array of SqlParamters used to execute the command.</param>
+        /// <returns>The first column of the first row in the result set, or a null reference if the result set is empty. Returns a maximum of 2033 characters. This object should be converted to the expected type using Convert.To{Type}.</returns>
+        public static object ExecuteScalar(SqlConnection conn, SqlTransaction tran, CommandType cmdType, string cmdText, params SqlParameter[] commandParameters)
         {
             object val;
-            SqlCommand cmd = commandPool.GetObject();
+            SqlCommand cmd = CommandPool.GetObject();
             try
             {
-                PrepareCommand(cmd, connection, null, cmdType, cmdText, commandParameters);
+                PrepareCommand(cmd, conn, tran, cmdType, cmdText, commandParameters);
                 val = cmd.ExecuteScalar();
             }
             finally
             {
-                commandPool.PutObject(cmd);
+                cmd.Transaction = null;
+                CommandPool.PutObject(cmd);
             }
+
             return val;
         }
 
@@ -168,10 +218,8 @@ namespace InvertedSoftware.DataBlock
             cmd.Connection = conn;
             cmd.CommandText = cmdText;
             cmd.CommandType = cmdType;
-
-            if (trans != null)
-                cmd.Transaction = trans;
-
+            cmd.Transaction = trans;
+            
             if (cmdParms != null)
             {
                 foreach (SqlParameter parm in cmdParms)
