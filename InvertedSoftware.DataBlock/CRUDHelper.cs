@@ -176,14 +176,15 @@ namespace InvertedSoftware.DataBlock
         /// <param name="sprocName">The name of the stored procedure to use.</param>
         /// <param name="columnName">The name of the column containing the result. Leave empty if this is the first column in the result.</param>
         /// <param name="stringConnection">The string connection.</param>
+        /// <param name="commandParameters">Any parameters required by the stored procedure.</param>
         /// <returns>List of string</returns>
-        public static List<string> GetStringList(string sprocName, string columnName, string stringConnection)
+        public static List<string> GetStringList(string sprocName, string columnName, string stringConnection, params SqlParameter[] commandParameters)
         {
             List<string> stringList = new List<string>();
 
             try
             {
-                using (SqlDataReader reader = SqlHelper.ExecuteReader(stringConnection, CommandType.StoredProcedure, sprocName))
+                using (SqlDataReader reader = SqlHelper.ExecuteReader(stringConnection, CommandType.StoredProcedure, sprocName, commandParameters))
                 {
                     if (string.IsNullOrWhiteSpace(columnName))
                         while (reader.Read())
@@ -207,14 +208,15 @@ namespace InvertedSoftware.DataBlock
         /// <param name="sprocName">The name of the stored procedure to use.</param>
         /// <param name="columnName">The name of the column containing the result. Leave empty if this is the first column in the result.</param>
         /// <param name="stringConnection">The string connection.</param>
+        /// <param name="commandParameters">Any parameters required by the stored procedure.</param>
         /// <returns>List of int</returns>
-        public static List<int> GetIntList(string sprocName, string columnName, string stringConnection)
+        public static List<int> GetIntList(string sprocName, string columnName, string stringConnection, params SqlParameter[] commandParameters)
         {
             List<int> intList = new List<int>();
 
             try
             {
-                using (SqlDataReader reader = SqlHelper.ExecuteReader(stringConnection, CommandType.StoredProcedure, sprocName))
+                using (SqlDataReader reader = SqlHelper.ExecuteReader(stringConnection, CommandType.StoredProcedure, sprocName, commandParameters))
                 {
                     if (string.IsNullOrWhiteSpace(columnName))
                         while (reader.Read())
@@ -238,14 +240,15 @@ namespace InvertedSoftware.DataBlock
         /// <param name="sprocName">The name of the stored procedure to use.</param>
         /// <param name="columnName">The name of the column containing the result. Leave empty if this is the first column in the result.</param>
         /// <param name="stringConnection">The string connection.</param>
+        /// <param name="commandParameters">Any parameters required by the stored procedure.</param>
         /// <returns>List of decimal</returns>
-        public static List<decimal> GetDecimalList(string sprocName, string columnName, string stringConnection)
+        public static List<decimal> GetDecimalList(string sprocName, string columnName, string stringConnection, params SqlParameter[] commandParameters)
         {
             List<decimal> decimalList = new List<decimal>();
 
             try
             {
-                using (SqlDataReader reader = SqlHelper.ExecuteReader(stringConnection, CommandType.StoredProcedure, sprocName))
+                using (SqlDataReader reader = SqlHelper.ExecuteReader(stringConnection, CommandType.StoredProcedure, sprocName, commandParameters))
                 {
                     if (string.IsNullOrWhiteSpace(columnName))
                         while (reader.Read())
