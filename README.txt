@@ -1,1 +1,2 @@
-http://galratner.com/blogs/net/archive/2012/06/08/introducing-the-inverted-software-data-block-simple-ado-net-to-objects-with-no-boilerplate-code.aspx
+Quick Start Tutorial Here:
+http://galratner.com/blogs/net/archive/2014/03/19/the-inverted-software-datablock-quick-start-tutorial.aspx
