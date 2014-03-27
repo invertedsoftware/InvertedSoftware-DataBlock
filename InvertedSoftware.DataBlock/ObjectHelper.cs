@@ -18,7 +18,7 @@ namespace InvertedSoftware.DataBlock
     /// <summary>
     /// This class helps mapping stored procedures input and output to objects.
     /// </summary>
-    internal class ObjectHelper
+    public class ObjectHelper
     {
         /// <summary>
         /// Keeps metadata information about a POCO object
@@ -153,6 +153,7 @@ namespace InvertedSoftware.DataBlock
         internal static void LoadAs<T>(SqlDataReader reader, T objectToLoad, PropertyInfo[] props, List<string> columnList, string sprocName)
         {
             DataObjectInfo dataObjectInfo = GetDataObjectInfo<T>();
+            CrudField usedForAttr;
 
             if (objectToLoad == null)
                 objectToLoad = Activator.CreateInstance<T>();
@@ -163,7 +164,13 @@ namespace InvertedSoftware.DataBlock
 
             for (int i = 0; i < props.Length; i++)
             {
-                if (columnList.Contains(props[i].Name) && reader[props[i].Name] != DBNull.Value)
+                usedForAttr = null;
+                if ((dataObjectInfo.AllAttributes.TryGetValue(props[i].Name, out usedForAttr) &&
+                    ((usedForAttr.UsedFor & CrudFieldType.Read) == CrudFieldType.Read ||
+                    usedForAttr.UsedFor == CrudFieldType.All)) ||
+                    usedForAttr == null &&
+                    columnList.Contains(props[i].Name) &&
+                    reader[props[i].Name] != DBNull.Value)
                     dataObjectInfo.SetMethods[props[i].Name](objectToLoad, reader[props[i].Name]);
             }
         }
@@ -175,7 +182,7 @@ namespace InvertedSoftware.DataBlock
         /// <param name="dataObject">The live object.</param>
         /// <param name="usedFor">The CRUD operation to be performed with the SqlParameter array.</param>
         /// <returns>SqlParameter array for the object.</returns>
-        internal static SqlParameter[] GetSQLParametersFromPublicProperties<T>(object dataObject, CrudFieldType usedFor)
+        public static SqlParameter[] GetSQLParametersFromPublicProperties<T>(object dataObject, CrudFieldType usedFor)
         {
             Type type = typeof(T);
             CrudField usedForAttr;
@@ -201,6 +208,19 @@ namespace InvertedSoftware.DataBlock
         }
 
         /// <summary>
+        /// Utility method to return DBNull.Value on null objects.
+        /// </summary>
+        /// <param name="unsafeValue">The original value</param>
+        /// <param name="returnNullIf">If unsafeValue is this value, return DBNull.Value.</param>
+        /// <returns>The original value or DBNull.Value</returns>
+        public static object GetSqlParameterValue(object unsafeValue, object returnNullIf = null)
+        {
+            if (unsafeValue != null && unsafeValue != returnNullIf)
+                return unsafeValue;
+            return DBNull.Value;
+        }
+
+        /// <summary>
         /// Load an object into a list based on a column name that matches the object type and property.
         /// </summary>
         /// <typeparam name="T">The type of the object to load</typeparam>
@@ -211,6 +231,7 @@ namespace InvertedSoftware.DataBlock
         internal static void LoadObjectFromReaderWithColumnPrefix<T>(Func<T> generator, ref List<T> objectList, List<string> allColumns, SqlDataReader reader)
         {
             string prefix = typeof(T).Name;
+            CrudField usedForAttr;
             ObjectHelper.DataObjectInfo objectInfo = ObjectHelper.GetDataObjectInfo<T>();
             if (objectInfo.IdentityAttributes.Count == 0)
                 throw new Exception(String.Format("Object {0} does not contain a DatabaseGeneratedAttribute with DatabaseGeneratedOption.Identity", prefix));
@@ -219,11 +240,16 @@ namespace InvertedSoftware.DataBlock
                 return;
             T newObject = generator();
             // Fill in a new parent and add it to the parent list
-            for (int i = 0; i < objectInfo.Properties.Length; i++)
+            for (int i = 0; i < objectInfo.Properties.Length; i++) 
             {
                 string parentColumnName = String.Format("{0}_{1}", prefix, objectInfo.Properties[i].Name);
-
-                if (allColumns.Contains(parentColumnName) && reader[parentColumnName] != DBNull.Value)
+                usedForAttr = null;
+                if ((objectInfo.AllAttributes.TryGetValue(objectInfo.Properties[i].Name, out usedForAttr) &&
+                    ((usedForAttr.UsedFor & CrudFieldType.Read) == CrudFieldType.Read ||
+                    usedForAttr.UsedFor == CrudFieldType.All)) ||
+                    usedForAttr == null &&
+                    allColumns.Contains(parentColumnName) &&
+                    reader[parentColumnName] != DBNull.Value)
                     objectInfo.SetMethods[objectInfo.Properties[i].Name](newObject, reader[parentColumnName]);
             }
             objectList.Add(newObject);
@@ -243,6 +269,10 @@ namespace InvertedSoftware.DataBlock
             // To map the parent child objects we use a ForeignKeyAttribute in the child with the parent's key property: [ForeignKey("BlogId")]
             // Find the property in T1 that should contain a generic list of T2
             PropertyInfo childListProp = parentDataObjectInfo.InnerCollections.Where((p) => p.PropertyType.GenericTypeArguments[0].UnderlyingSystemType.FullName == typeof(T2).FullName).FirstOrDefault();
+            if (childListProp == null) // If there is no generic list found in T1, Look for a single object
+                childListProp = parentDataObjectInfo.Properties.Where((p) => p.PropertyType.FullName == typeof(T2).FullName).FirstOrDefault();
+            if (childListProp == null)
+                throw new TypeLoadException(String.Format("Type of {0} not found in {1}", typeof(T2).FullName, typeof(T1).FullName));
 
             // Find the property in T2 that contains the ForeignKey. We will use this to get the primary key value from the parent.
             KeyValuePair<string, ForeignKeyAttribute> foreignKey = childDataObjectInfo.ForeignKeyAttributes.FirstOrDefault();
@@ -256,7 +286,10 @@ namespace InvertedSoftware.DataBlock
             {
                 //Set the prop with the filtered list of children
                 List<T2> filteredList = GetForeignKeyFilteredList<T1, T2>(parent, objectList2, foreignKey.Key);
-                childListProp.SetValue(parent, filteredList);
+                if (IsCollectionType(childListProp.PropertyType))
+                    childListProp.SetValue(parent, filteredList);
+                else
+                    childListProp.SetValue(parent, filteredList.FirstOrDefault());
             }
         }
 
