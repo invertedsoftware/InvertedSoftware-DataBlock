@@ -10,6 +10,7 @@ using System.Data.SqlClient;
 using System.Linq;
 using System.Reflection;
 using System.ComponentModel.DataAnnotations.Schema;
+using System.Threading.Tasks;
 
 namespace InvertedSoftware.DataBlock
 {
@@ -42,6 +43,30 @@ namespace InvertedSoftware.DataBlock
 
             return newRecordID;
         }
+
+        /// <summary>
+        /// Adds an object to the database using a stored procedure.
+        /// </summary>
+        /// <typeparam name="T">The object's type.</typeparam>
+        /// <param name="objectToAdd">The live object.</param>
+        /// <param name="sprocName">The name of the stored procedure to use.</param>
+        /// <param name="stringConnection">The string connection.</param>
+        /// <returns>The new generated Row ID.</returns>
+        public static async Task<int> AddObjectAsync<T>(T objectToAdd, string sprocName, string stringConnection)
+        {
+            int newRecordID = 0;
+            try
+            {
+                SqlParameter[] paramArray = ObjectHelper.GetSQLParametersFromPublicProperties<T>(objectToAdd, CrudFieldType.Create);
+                newRecordID = Convert.ToInt32(await SqlHelper.ExecuteScalarAsync(stringConnection, CommandType.StoredProcedure, sprocName, paramArray));
+            }
+            catch (Exception e)
+            {
+                throw new DataBlockException(String.Format("Error Adding object {0}. Stored Procedure: {1}", typeof(T).FullName, sprocName), e);
+            }
+
+            return newRecordID;
+        }
         #endregion
 
         #region Read
@@ -61,6 +86,37 @@ namespace InvertedSoftware.DataBlock
             {
                 newobject = generator();
                 using (SqlDataReader rdr = SqlHelper.ExecuteReader(stringConnection, CommandType.StoredProcedure, sprocName, commandParameters))
+                {
+                    PropertyInfo[] props = ObjectHelper.GetDataObjectInfo<T>().Properties;
+                    List<string> columnList = ObjectHelper.GetColumnNames(rdr, sprocName);
+                    while (rdr.Read())
+                        ObjectHelper.LoadAs<T>(rdr, newobject, props, columnList, sprocName);
+                }
+            }
+            catch (Exception e)
+            {
+                throw new DataBlockException(String.Format("Error Getting object {0}. Stored Procedure: {1}", typeof(T).FullName, sprocName), e);
+            }
+
+            return newobject;
+        }
+
+        /// <summary>
+        /// Gets an object with its properties populated from a stored procedure.
+        /// </summary>
+        /// <typeparam name="T">The object's type.</typeparam>
+        /// <param name="generator">Function to generate a new object. Example: () => new MyCustomObject()</param>
+        /// <param name="sprocName">The name of the stored procedure to use.</param>
+        /// <param name="stringConnection">The string connection.</param>
+        /// <param name="commandParameters">Any parameters required by the stored procedure.</param>
+        /// <returns>A data object.</returns>
+        public static async Task<T> GetObjectAsync<T>(Func<T> generator, string sprocName, string stringConnection, params SqlParameter[] commandParameters)
+        {
+            T newobject;
+            try
+            {
+                newobject = generator();
+                using (SqlDataReader rdr = await SqlHelper.ExecuteReaderAsync(stringConnection, CommandType.StoredProcedure, sprocName, commandParameters))
                 {
                     PropertyInfo[] props = ObjectHelper.GetDataObjectInfo<T>().Properties;
                     List<string> columnList = ObjectHelper.GetColumnNames(rdr, sprocName);
@@ -135,6 +191,58 @@ namespace InvertedSoftware.DataBlock
             return objectList;
         }
 
+        public static async Task<ObjectListResult<T>> GetObjectListAsync<T>(Func<T> generator, int pageIndex, int rowsPerPage, string sprocName, string stringConnection, params SqlParameter[] commandParameters)
+        {
+            List<T> objectList = new List<T>();
+            ObjectListResult<T> result = new ObjectListResult<T>();
+
+            SqlParameter[] paramArray = new SqlParameter[]{ 
+                new SqlParameter("@PageIndex", SqlDbType.Int){ Value = pageIndex},
+                new SqlParameter("@PageSize", SqlDbType.Int){ Value = rowsPerPage},
+                new SqlParameter("@TotalRecords", SqlDbType.Int){ Direction = ParameterDirection.ReturnValue }
+            };
+
+            if (commandParameters != null)
+                paramArray = paramArray.Concat(commandParameters).ToArray();
+
+            SqlCommand cmd = SqlHelper.CommandPool.GetObject();
+            using (SqlConnection conn = new SqlConnection(stringConnection))
+            {
+                try
+                {
+                    SqlHelper.PrepareCommand(cmd, null, CommandType.StoredProcedure, sprocName, paramArray);
+                    if (conn.State != ConnectionState.Open)
+                        await conn.OpenAsync();
+                    cmd.Connection = conn;
+                    using (SqlDataReader rdr = await cmd.ExecuteReaderAsync(CommandBehavior.CloseConnection))
+                    {
+                        PropertyInfo[] props = ObjectHelper.GetDataObjectInfo<T>().Properties;
+                        List<string> columnList = ObjectHelper.GetColumnNames(rdr, sprocName);
+                        T newobject;
+                        while (rdr.Read())
+                        {
+                            newobject = generator();
+                            ObjectHelper.LoadAs<T>(rdr, newobject, props, columnList, sprocName);
+                            objectList.Add(newobject);
+                        }
+                    }
+                    result.CurrentPage = objectList;
+                    result.VirtualTotal = Convert.ToInt32(paramArray.Where(p => p.ParameterName == "@TotalRecords").First().Value);
+                    cmd.Parameters.Clear();
+                }
+                catch (Exception e)
+                {
+                    throw new DataBlockException(String.Format("Error Getting object list {0}. Stored Procedure: {1}", typeof(T).FullName, sprocName), e);
+                }
+                finally
+                {
+                    SqlHelper.CommandPool.PutObject(cmd);
+                }
+            }
+
+            return result;
+        }
+
         /// <summary>
         /// Gets a list of objects with their properties populated from a stored procedure.
         /// </summary>
@@ -150,6 +258,41 @@ namespace InvertedSoftware.DataBlock
             try
             {
                 using (SqlDataReader reader = SqlHelper.ExecuteReader(stringConnection, CommandType.StoredProcedure, sprocName))
+                {
+                    PropertyInfo[] props = ObjectHelper.GetDataObjectInfo<T>().Properties;
+                    List<string> columnList = ObjectHelper.GetColumnNames(reader, sprocName);
+                    T newobject;
+                    while (reader.Read())
+                    {
+                        newobject = generator();
+                        ObjectHelper.LoadAs<T>(reader, newobject, props, columnList, sprocName);
+                        objectList.Add(newobject);
+                    }
+                }
+            }
+            catch (Exception e)
+            {
+                throw new DataBlockException(String.Format("Error Getting object list {0}. Stored Procedure: {1}", typeof(T).FullName, sprocName), e);
+            }
+
+            return objectList;
+        }
+
+        /// <summary>
+        /// Gets a list of objects with their properties populated from a stored procedure.
+        /// </summary>
+        /// <typeparam name="T">The object's type.</typeparam>
+        /// <param name="generator">Function to generate a new object. Example: () => new MyCustomObject()</param>
+        /// <param name="sprocName">The name of the stored procedure to use.</param>
+        /// <param name="stringConnection">The string connection.</param>
+        /// <returns>A list of objects.</returns>
+        public static async Task<List<T>> GetObjectListAsync<T>(Func<T> generator, string sprocName, string stringConnection)
+        {
+            List<T> objectList = new List<T>();
+
+            try
+            {
+                using (SqlDataReader reader = await SqlHelper.ExecuteReaderAsync(stringConnection, CommandType.StoredProcedure, sprocName))
                 {
                     PropertyInfo[] props = ObjectHelper.GetDataObjectInfo<T>().Properties;
                     List<string> columnList = ObjectHelper.GetColumnNames(reader, sprocName);
@@ -509,6 +652,41 @@ namespace InvertedSoftware.DataBlock
 
             return objectList;
         }
+
+        /// <summary>
+        /// Gets a list of objects with their properties populated from a stored procedure.
+        /// </summary>
+        /// <typeparam name="T">The object's type.</typeparam>
+        /// <param name="generator">Function to generate a new object. Example: () => new MyCustomObject()</param>
+        /// <param name="sprocName">The name of the stored procedure to use.</param>
+        /// <param name="stringConnection">The string connection.</param>
+        /// <param name="commandParameters">Any parameters required by the stored procedure.</param>
+        /// <returns>A list of objects.</returns>
+        public static async Task<List<T>> GetObjectListAsync<T>(Func<T> generator, string sprocName, string stringConnection, params SqlParameter[] commandParameters)
+        {
+            List<T> objectList = new List<T>();
+            try
+            {
+                using (SqlDataReader reader = await SqlHelper.ExecuteReaderAsync(stringConnection, CommandType.StoredProcedure, sprocName, commandParameters))
+                {
+                    PropertyInfo[] props = ObjectHelper.GetDataObjectInfo<T>().Properties;
+                    List<string> columnList = ObjectHelper.GetColumnNames(reader, sprocName);
+                    T newobject;
+                    while (reader.Read())
+                    {
+                        newobject = generator();
+                        ObjectHelper.LoadAs<T>(reader, newobject, props, columnList, sprocName);
+                        objectList.Add(newobject);
+                    }
+                }
+            }
+            catch (Exception e)
+            {
+                throw new DataBlockException(String.Format("Error Getting object list {0}. Stored Procedure: {1}", typeof(T).FullName, sprocName), e);
+            }
+
+            return objectList;
+        }
         #endregion
 
         #region Update
@@ -525,6 +703,26 @@ namespace InvertedSoftware.DataBlock
             {
                 SqlParameter[] paramArray = ObjectHelper.GetSQLParametersFromPublicProperties<T>(objectToUpdate, CrudFieldType.Update);
                 SqlHelper.ExecuteNonQuery(stringConnection, CommandType.StoredProcedure, sprocName, paramArray);
+            }
+            catch (Exception e)
+            {
+                throw new DataBlockException(String.Format("Error Updating object {0}. Stored Procedure: {1}", typeof(T).FullName, sprocName), e);
+            }
+        }
+
+        /// <summary>
+        /// Updates a record in the database based on the values of an object's properties.
+        /// </summary>
+        /// <typeparam name="T">The object's type.</typeparam>
+        /// <param name="objectToUpdate">The live object.</param>
+        /// <param name="sprocName">The name of the stored procedure to use.</param>
+        /// <param name="stringConnection">The string connection.</param>
+        public static async void UpdateObjectAsync<T>(T objectToUpdate, string sprocName, string stringConnection)
+        {
+            try
+            {
+                SqlParameter[] paramArray = ObjectHelper.GetSQLParametersFromPublicProperties<T>(objectToUpdate, CrudFieldType.Update);
+                await SqlHelper.ExecuteNonQueryAsync(stringConnection, CommandType.StoredProcedure, sprocName, paramArray);
             }
             catch (Exception e)
             {
@@ -555,6 +753,26 @@ namespace InvertedSoftware.DataBlock
         }
 
         /// <summary>
+        /// Deletes a row in the database based on the values of an object's properties.
+        /// </summary>
+        /// <typeparam name="T">The object's type.</typeparam>
+        /// <param name="objectToDelete">The live object.</param>
+        /// <param name="sprocName">The name of the stored procedure to use.</param>
+        /// <param name="stringConnection">The string connection.</param>
+        public static async void DeleteObjectAsync<T>(T objectToDelete, string sprocName, string stringConnection)
+        {
+            try
+            {
+                SqlParameter[] paramArray = ObjectHelper.GetSQLParametersFromPublicProperties<T>(objectToDelete, CrudFieldType.Delete);
+                await SqlHelper.ExecuteNonQueryAsync(stringConnection, CommandType.StoredProcedure, sprocName, paramArray);
+            }
+            catch (Exception e)
+            {
+                throw new DataBlockException(String.Format("Error Deleting object {0}. Stored Procedure: {1}", typeof(T).FullName, sprocName), e);
+            }
+        }
+
+        /// <summary>
         /// Deletes a record in the database.
         /// </summary>
         /// <param name="rowID">The ID to use when deleting.</param>
@@ -566,6 +784,25 @@ namespace InvertedSoftware.DataBlock
             try
             {
                 SqlHelper.ExecuteNonQuery(stringConnection, CommandType.StoredProcedure, sprocName, new SqlParameter(parameterName, SqlDbType.Int) { Value = rowID });
+            }
+            catch (Exception e)
+            {
+                throw new DataBlockException(String.Format("Error Deleting Row. Stored Procedure: {0}", sprocName), e);
+            }
+        }
+
+        /// <summary>
+        /// Deletes a record in the database.
+        /// </summary>
+        /// <param name="rowID">The ID to use when deleting.</param>
+        /// <param name="parameterName">The ID parameter name on the stored procedure to use. Example: @CustomerID</param>
+        /// <param name="sprocName">The name of the stored procedure to use.</param>
+        /// <param name="stringConnection">The string connection.</param>
+        public static async void DeleteRecordAsync(int rowID, string parameterName, string sprocName, string stringConnection)
+        {
+            try
+            {
+                await SqlHelper.ExecuteNonQueryAsync(stringConnection, CommandType.StoredProcedure, sprocName, new SqlParameter(parameterName, SqlDbType.Int) { Value = rowID });
             }
             catch (Exception e)
             {
