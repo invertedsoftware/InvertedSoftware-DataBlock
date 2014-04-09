@@ -47,6 +47,7 @@
     <Compile Include="CrudField .cs" />
     <Compile Include="CRUDHelper.cs" />
     <Compile Include="DataBlockException.cs" />
+    <Compile Include="MapToColumn.cs" />
     <Compile Include="ObjectHelper.cs" />
     <Compile Include="ObjectListResult.cs" />
     <Compile Include="ObjectPool.cs" />

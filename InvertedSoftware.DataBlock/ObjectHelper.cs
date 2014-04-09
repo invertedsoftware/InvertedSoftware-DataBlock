@@ -27,6 +27,7 @@ namespace InvertedSoftware.DataBlock
         {
             public PropertyInfo[] Properties { get; set; }
             public PropertyInfo[] InnerCollections { get; set; }
+            public Dictionary<string, MapToColumn> MappingAttributes { get; set; }
             public Dictionary<string, CrudField> AllAttributes { get; set; }
             public Dictionary<string, ForeignKeyAttribute> ForeignKeyAttributes { get; set; }
             public Dictionary<string, DatabaseGeneratedAttribute> IdentityAttributes { get; set; }
@@ -60,6 +61,7 @@ namespace InvertedSoftware.DataBlock
                 {
                     Properties = type.GetProperties().Where(p => !IsCollectionType(p.PropertyType)).ToArray(),
                     InnerCollections = type.GetProperties().Where(p => IsCollectionType(p.PropertyType)).ToArray(),
+                    MappingAttributes = new Dictionary<string, MapToColumn>(),
                     AllAttributes = new Dictionary<string, CrudField>(),
                     ForeignKeyAttributes = new Dictionary<string, ForeignKeyAttribute>(),
                     IdentityAttributes = new Dictionary<string, DatabaseGeneratedAttribute>(),
@@ -69,7 +71,12 @@ namespace InvertedSoftware.DataBlock
 
                 foreach (var property in dataObjectInfo.Properties)
                 {
-                    // Fill in attributes
+                    // Fill in mapping attributes
+                    var mapAtt = property.GetCustomAttributes<MapToColumn>(true).FirstOrDefault();
+                    if (mapAtt != null)
+                        dataObjectInfo.MappingAttributes.Add(property.Name, mapAtt);
+
+                    // Fill in CRUD attributes
                     var dataAtt = property.GetCustomAttributes<CrudField>(true).FirstOrDefault();
                     if (dataAtt != null)
                         dataObjectInfo.AllAttributes.Add(property.Name, dataAtt);
@@ -97,7 +104,10 @@ namespace InvertedSoftware.DataBlock
                         generator.Emit((property.PropertyType.IsClass) ? OpCodes.Castclass : OpCodes.Unbox_Any, property.PropertyType);
                         generator.EmitCall(OpCodes.Callvirt, setMethod, null);
                         generator.Emit(OpCodes.Ret);
-                        dataObjectInfo.SetMethods.Add(property.Name, (Action<object, object>)setter.CreateDelegate(typeof(Action<object, object>)));
+                        if (mapAtt == null)
+                            dataObjectInfo.SetMethods.Add(property.Name, (Action<object, object>)setter.CreateDelegate(typeof(Action<object, object>)));
+                        else
+                            dataObjectInfo.SetMethods.Add(mapAtt.ColumnName, (Action<object, object>)setter.CreateDelegate(typeof(Action<object, object>)));
                     }
                     // Add dynamic get methods
                     var getMethod = property.GetGetMethod();
@@ -116,7 +126,10 @@ namespace InvertedSoftware.DataBlock
                             generator.Emit(OpCodes.Box, property.PropertyType);
                         }
                         generator.Emit(OpCodes.Ret);
-                        dataObjectInfo.GetMethods.Add(property.Name, (Func<object, object>)getter.CreateDelegate(typeof(Func<object, object>)));
+                        if (mapAtt == null)
+                            dataObjectInfo.GetMethods.Add(property.Name, (Func<object, object>)getter.CreateDelegate(typeof(Func<object, object>)));
+                        else
+                            dataObjectInfo.GetMethods.Add(mapAtt.ColumnName, (Func<object, object>)getter.CreateDelegate(typeof(Func<object, object>)));
                     }
                 }
                 return dataObjectInfo;
@@ -154,6 +167,8 @@ namespace InvertedSoftware.DataBlock
         {
             DataObjectInfo dataObjectInfo = GetDataObjectInfo<T>();
             CrudField usedForAttr;
+            MapToColumn column;
+            string currentColumn = null;
 
             if (objectToLoad == null)
                 objectToLoad = Activator.CreateInstance<T>();
@@ -164,14 +179,21 @@ namespace InvertedSoftware.DataBlock
 
             for (int i = 0; i < props.Length; i++)
             {
+                column = null;
                 usedForAttr = null;
+
+                if (dataObjectInfo.MappingAttributes.TryGetValue(props[i].Name, out column))
+                    currentColumn = column.ColumnName;
+                else
+                    currentColumn = props[i].Name;
+
                 if ((dataObjectInfo.AllAttributes.TryGetValue(props[i].Name, out usedForAttr) &&
                     ((usedForAttr.UsedFor & CrudFieldType.Read) == CrudFieldType.Read ||
                     usedForAttr.UsedFor == CrudFieldType.All)) ||
                     usedForAttr == null &&
-                    columnList.Contains(props[i].Name) &&
-                    reader[props[i].Name] != DBNull.Value)
-                    dataObjectInfo.SetMethods[props[i].Name](objectToLoad, reader[props[i].Name]);
+                    columnList.Contains(currentColumn) &&
+                    reader[currentColumn] != DBNull.Value)
+                    dataObjectInfo.SetMethods[currentColumn](objectToLoad, reader[currentColumn]);
             }
         }
 
@@ -188,19 +210,30 @@ namespace InvertedSoftware.DataBlock
             CrudField usedForAttr;
             DataObjectInfo dataObjectInfo = GetDataObjectInfo<T>();
             List<SqlParameter> paramList = new List<SqlParameter>();
-            foreach (var prop in dataObjectInfo.Properties)
+            for (int i = 0; i < dataObjectInfo.Properties.Length; i++)
             {
                 usedForAttr = null;
-                if ((dataObjectInfo.AllAttributes.TryGetValue(prop.Name, out usedForAttr) &&
+                if ((dataObjectInfo.AllAttributes.TryGetValue(dataObjectInfo.Properties[i].Name, out usedForAttr) &&
                     ((usedForAttr.UsedFor & usedFor) == usedFor ||
                     usedForAttr.UsedFor == CrudFieldType.All)) ||
                     usedForAttr == null)
                 {
-                    object parameterValue = dataObjectInfo.GetMethods[prop.Name](dataObject);
+                    object parameterValue = null;
+                    SqlParameter sqlParameter = null;
+                    MapToColumn column;
+                    if (dataObjectInfo.MappingAttributes.TryGetValue(dataObjectInfo.Properties[i].Name, out column))
+                    {
+                        parameterValue = dataObjectInfo.GetMethods[column.ColumnName](dataObject);
+                        sqlParameter = new SqlParameter(String.Format("@{0}", column.ColumnName), parameterValue);
+                    }
+                    else
+                    {
+                        parameterValue = dataObjectInfo.GetMethods[dataObjectInfo.Properties[i].Name](dataObject);
+                        sqlParameter = new SqlParameter(String.Format("@{0}", dataObjectInfo.Properties[i].Name), parameterValue);
+                    }
+
                     if (parameterValue == null)
                         parameterValue = DBNull.Value;
-
-                    SqlParameter sqlParameter = new SqlParameter(String.Format("@{0}", prop.Name), parameterValue);
                     paramList.Add(sqlParameter);
                 }
             }
@@ -232,6 +265,8 @@ namespace InvertedSoftware.DataBlock
         {
             string prefix = typeof(T).Name;
             CrudField usedForAttr;
+            MapToColumn column;
+            string currentColumn = null;
             ObjectHelper.DataObjectInfo objectInfo = ObjectHelper.GetDataObjectInfo<T>();
             if (objectInfo.IdentityAttributes.Count == 0)
                 throw new Exception(String.Format("Object {0} does not contain a DatabaseGeneratedAttribute with DatabaseGeneratedOption.Identity", prefix));
@@ -240,9 +275,17 @@ namespace InvertedSoftware.DataBlock
                 return;
             T newObject = generator();
             // Fill in a new parent and add it to the parent list
-            for (int i = 0; i < objectInfo.Properties.Length; i++) 
+            for (int i = 0; i < objectInfo.Properties.Length; i++)
             {
-                string parentColumnName = String.Format("{0}_{1}", prefix, objectInfo.Properties[i].Name);
+                column = null;
+                usedForAttr = null;
+
+                if (objectInfo.MappingAttributes.TryGetValue(objectInfo.Properties[i].Name, out column))
+                    currentColumn = column.ColumnName;
+                else
+                    currentColumn = objectInfo.Properties[i].Name;
+
+                string parentColumnName = String.Format("{0}_{1}", prefix, currentColumn);
                 usedForAttr = null;
                 if ((objectInfo.AllAttributes.TryGetValue(objectInfo.Properties[i].Name, out usedForAttr) &&
                     ((usedForAttr.UsedFor & CrudFieldType.Read) == CrudFieldType.Read ||
@@ -250,7 +293,7 @@ namespace InvertedSoftware.DataBlock
                     usedForAttr == null &&
                     allColumns.Contains(parentColumnName) &&
                     reader[parentColumnName] != DBNull.Value)
-                    objectInfo.SetMethods[objectInfo.Properties[i].Name](newObject, reader[parentColumnName]);
+                    objectInfo.SetMethods[currentColumn](newObject, reader[parentColumnName]);
             }
             objectList.Add(newObject);
         }
