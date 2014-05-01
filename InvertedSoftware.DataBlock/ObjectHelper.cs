@@ -141,17 +141,33 @@ namespace InvertedSoftware.DataBlock
         /// </summary>
         /// <param name="reader">A data reader containing the stored procedure's result.</param>
         /// <param name="sprocName">The name of the stored procedure to use.</param>
+        /// <param name="useCache">Use the internal DataBlock's cache</param>
         /// <returns>A list of column names.</returns>
-        internal static List<string> GetColumnNames(SqlDataReader reader, string sprocName)
+        internal static List<string> GetColumnNames(SqlDataReader reader, string sprocName, bool useCache = true)
         {
-            return QueryColumnNamesCache.GetOrAdd(sprocName, (key) =>
-            {
-                List<string> columnNames = new List<string>();
-                System.Data.DataTable readerSchema = reader.GetSchemaTable();
-                for (int i = 0; i < readerSchema.Rows.Count; i++)
-                    columnNames.Add(readerSchema.Rows[i]["ColumnName"].ToString());
-                return columnNames;
-            });
+            if (useCache)
+                return QueryColumnNamesCache.GetOrAdd(sprocName, (key) =>
+                {
+                    return GetColumnNames(reader, sprocName);
+                });
+
+            else
+                return GetColumnNames(reader, sprocName);
+        }
+
+        /// <summary>
+        /// Gets a list of columns for a query (Please make sure columns returned match the output of the stored procedure).
+        /// </summary>
+        /// <param name="reader">A data reader containing the stored procedure's result.</param>
+        /// <param name="sprocName">The name of the stored procedure to use.</param>
+        /// <returns>A list of column names.</returns>
+        private static List<string> GetColumnNames(SqlDataReader reader, string sprocName)
+        {
+            List<string> columnNames = new List<string>();
+            System.Data.DataTable readerSchema = reader.GetSchemaTable();
+            for (int i = 0; i < readerSchema.Rows.Count; i++)
+                columnNames.Add(readerSchema.Rows[i]["ColumnName"].ToString());
+            return columnNames;
         }
 
         /// <summary>

@@ -599,7 +599,7 @@ namespace InvertedSoftware.DataBlock
             try
             {
                 PropertyInfo[] props = ObjectHelper.GetDataObjectInfo<T>().Properties;
-                List<string> columnList = ObjectHelper.GetColumnNames(reader, String.Format("sprocName{0}", typeof(T).Name));
+                List<string> columnList = ObjectHelper.GetColumnNames(reader, String.Format("sprocName{0}", typeof(T).Name), false);
                 if (columnList.Count == 1 && string.IsNullOrWhiteSpace(columnList[0])) // The select is NULL
                     return objectList;
                 T newobject;
