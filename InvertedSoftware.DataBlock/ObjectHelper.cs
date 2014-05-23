@@ -204,9 +204,9 @@ namespace InvertedSoftware.DataBlock
                     currentColumn = props[i].Name;
 
                 if ((dataObjectInfo.AllAttributes.TryGetValue(props[i].Name, out usedForAttr) &&
-                    ((usedForAttr.UsedFor & CrudFieldType.Read) == CrudFieldType.Read ||
+                    (((usedForAttr.UsedFor & CrudFieldType.Read) == CrudFieldType.Read ||
                     usedForAttr.UsedFor == CrudFieldType.All)) ||
-                    usedForAttr == null &&
+                    usedForAttr == null) &&
                     columnList.Contains(currentColumn) &&
                     reader[currentColumn] != DBNull.Value)
                     dataObjectInfo.SetMethods[currentColumn](objectToLoad, reader[currentColumn]);
