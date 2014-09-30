@@ -199,18 +199,10 @@ namespace InvertedSoftware.DataBlock
         /// <returns>A SqlDataReader containing the results.</returns>
         public static SqlDataReader ExecuteReader(SqlConnection conn, SqlTransaction tran, CommandType cmdType, string cmdText, params SqlParameter[] commandParameters)
         {
-            SqlCommand cmd = CommandPool.GetObject();
-            try
-            {
-                PrepareCommand(cmd, conn, tran, cmdType, cmdText, commandParameters);
-                SqlDataReader rdr = cmd.ExecuteReader(CommandBehavior.CloseConnection);
-                return rdr;
-            }
-            finally
-            {
-                cmd.Transaction = null;
-                CommandPool.PutObject(cmd);
-            }
+            SqlCommand cmd = new SqlCommand();
+            PrepareCommand(cmd, conn, tran, cmdType, cmdText, commandParameters);
+            SqlDataReader rdr = cmd.ExecuteReader(CommandBehavior.CloseConnection);
+            return rdr;
         }
 
         /// <summary>
