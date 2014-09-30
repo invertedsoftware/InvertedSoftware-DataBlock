@@ -125,7 +125,7 @@ namespace InvertedSoftware.DataBlock
         /// <returns>A SqlDataReader containing the results.</returns>
         public static SqlDataReader ExecuteReader(string connectionString, CommandType cmdType, string cmdText, params SqlParameter[] commandParameters)
         {
-            SqlCommand cmd = CommandPool.GetObject();
+            SqlCommand cmd = new SqlCommand();
             SqlConnection conn = new SqlConnection(connectionString);
 
             // we use a try/catch here because if the method throws an exception we want to 
@@ -139,13 +139,11 @@ namespace InvertedSoftware.DataBlock
             }
             catch
             {
-                conn.Close();
+                cmd.Dispose();
+                if (conn.State == ConnectionState.Open)
+                    conn.Close();
                 conn.Dispose();
                 throw;
-            }
-            finally
-            {
-                CommandPool.PutObject(cmd);
             }
         }
 
@@ -165,7 +163,7 @@ namespace InvertedSoftware.DataBlock
         /// <returns>A SqlDataReader containing the results.</returns>
         public static async Task<SqlDataReader> ExecuteReaderAsync(string connectionString, CommandType cmdType, string cmdText, params SqlParameter[] commandParameters)
         {
-            SqlCommand cmd = CommandPool.GetObject();
+            SqlCommand cmd = new SqlCommand();
             SqlConnection conn = new SqlConnection(connectionString);
 
             // we use a try/catch here because if the method throws an exception we want to 
@@ -182,13 +180,11 @@ namespace InvertedSoftware.DataBlock
             }
             catch
             {
-                conn.Close();
+                cmd.Dispose();
+                if (conn.State == ConnectionState.Open)
+                    conn.Close();
                 conn.Dispose();
                 throw;
-            }
-            finally
-            {
-                CommandPool.PutObject(cmd);
             }
         }
 
@@ -330,7 +326,7 @@ namespace InvertedSoftware.DataBlock
             cmd.CommandText = cmdText;
             cmd.CommandType = cmdType;
             cmd.Transaction = trans;
-            
+
             if (cmdParms != null)
             {
                 foreach (SqlParameter parm in cmdParms)
