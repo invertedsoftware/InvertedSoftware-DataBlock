@@ -1,5 +1,0 @@
-C:\Users\Gal\Documents\GitHub\InvertedSoftware-DataBlock\InvertedSoftware.DataBlock\bin\Debug\InvertedSoftware.DataBlock.dll
-C:\Users\Gal\Documents\GitHub\InvertedSoftware-DataBlock\InvertedSoftware.DataBlock\bin\Debug\InvertedSoftware.DataBlock.pdb
-C:\Users\Gal\Documents\GitHub\InvertedSoftware-DataBlock\InvertedSoftware.DataBlock\obj\Debug\InvertedSoftware.DataBlock.csprojResolveAssemblyReference.cache
-C:\Users\Gal\Documents\GitHub\InvertedSoftware-DataBlock\InvertedSoftware.DataBlock\obj\Debug\InvertedSoftware.DataBlock.dll
-C:\Users\Gal\Documents\GitHub\InvertedSoftware-DataBlock\InvertedSoftware.DataBlock\obj\Debug\InvertedSoftware.DataBlock.pdb
