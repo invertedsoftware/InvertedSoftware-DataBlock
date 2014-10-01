@@ -125,8 +125,8 @@ namespace InvertedSoftware.DataBlock
         /// <returns>A SqlDataReader containing the results.</returns>
         public static SqlDataReader ExecuteReader(string connectionString, CommandType cmdType, string cmdText, params SqlParameter[] commandParameters)
         {
-            SqlCommand cmd = new SqlCommand();
             SqlConnection conn = new SqlConnection(connectionString);
+            SqlCommand cmd = conn.CreateCommand();
 
             // we use a try/catch here because if the method throws an exception we want to 
             // close the connection throw code, because no datareader will exist, hence the 
@@ -163,8 +163,8 @@ namespace InvertedSoftware.DataBlock
         /// <returns>A SqlDataReader containing the results.</returns>
         public static async Task<SqlDataReader> ExecuteReaderAsync(string connectionString, CommandType cmdType, string cmdText, params SqlParameter[] commandParameters)
         {
-            SqlCommand cmd = new SqlCommand();
             SqlConnection conn = new SqlConnection(connectionString);
+            SqlCommand cmd = conn.CreateCommand();
 
             // we use a try/catch here because if the method throws an exception we want to 
             // close the connection throw code, because no datareader will exist, hence the 
